@@ -1,5 +1,16 @@
 require('dotenv').config();
-const { Client, GatewayIntentBits, Partials, Routes, REST, ModalBuilder, TextInputBuilder, TextInputStyle, ActionRowBuilder, InteractionType } = require('discord.js');
+const { 
+    Client, 
+    GatewayIntentBits, 
+    Partials, 
+    Routes, 
+    REST, 
+    ModalBuilder, 
+    TextInputBuilder, 
+    TextInputStyle, 
+    ActionRowBuilder, 
+    InteractionType 
+} = require('discord.js');
 const Rcon = require('rcon-srcds');
 
 const token = process.env.DISCORD_TOKEN;
@@ -34,7 +45,10 @@ client.once('ready', async () => {
     console.log(`Bot je online jako ${client.user.tag}`);
 
     try {
-        await rest.put(Routes.applicationGuildCommands(clientId, guildId), { body: commands });
+        await rest.put(
+            Routes.applicationGuildCommands(clientId, guildId), 
+            { body: commands }
+        );
         console.log('Slash příkaz registrován.');
     } catch (error) {
         console.error('❌ Chyba při registraci příkazu:', error);
@@ -42,11 +56,9 @@ client.once('ready', async () => {
 });
 
 client.on('interactionCreate', async (interaction) => {
-    if (interaction.isChatInputCommand() && interaction.commandName === 'vyjimka') {
-        try {
-            // 🛠️ Odpověď na interakci ihned (ACK) -> nutné pro modal
-            await interaction.deferReply({ ephemeral: true });
-
+    try {
+        if (interaction.isChatInputCommand() && interaction.commandName === 'vyjimka') {
+            // Zobraz modal PŘÍMO
             const modal = new ModalBuilder()
                 .setCustomId('vyjimkaModal')
                 .setTitle('Žádost o výjimku')
@@ -60,24 +72,28 @@ client.on('interactionCreate', async (interaction) => {
                     )
                 );
 
-            // ✨ Posíláme modal (po ACK)
-            await interaction.editReply({ content: "Zobrazím modal..." });
             await interaction.showModal(modal);
-        } catch (error) {
-            console.error('❌ Chyba při zobrazování modalu:', error);
+        } 
+        else if (interaction.type === InteractionType.ModalSubmit && interaction.customId === 'vyjimkaModal') {
+            const nick = interaction.fields.getTextInputValue('nick');
+
+            // Odpověď ephemeral s flags: 64
+            await interaction.reply({ content: `⏳ Ověřuji nick: ${nick}`, flags: 64 });
+
+            try {
+                await tryRconConnect(nick);
+                await interaction.editReply({ content: `✅ Výjimka udělena hráči \`${nick}\`.` });
+            } catch (error) {
+                console.error('❌ Chyba při RCON příkazu:', error);
+                await interaction.editReply({ content: `❌ Nepodařilo se připojit k RCON: ${error.message}` });
+            }
         }
-    }
-
-    if (interaction.type === InteractionType.ModalSubmit && interaction.customId === 'vyjimkaModal') {
-        const nick = interaction.fields.getTextInputValue('nick');
-
-        try {
-            await interaction.reply({ content: `⏳ Ověřuji nick: ${nick}`, ephemeral: true });
-            await tryRconConnect(nick);
-            await interaction.editReply({ content: `✅ Výjimka udělena hráči \`${nick}\`.` });
-        } catch (error) {
-            console.error('❌ Chyba při RCON příkazu:', error);
-            await interaction.editReply({ content: `❌ Nepodařilo se připojit k RCON: ${error.message}` });
+    } catch (error) {
+        console.error('❌ Chyba v interactionCreate:', error);
+        if (interaction.replied || interaction.deferred) {
+            await interaction.editReply({ content: 'Nastala chyba při zpracování interakce.' });
+        } else {
+            await interaction.reply({ content: 'Nastala chyba při zpracování interakce.', flags: 64 });
         }
     }
 });
