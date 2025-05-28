@@ -14,10 +14,12 @@ const client = new Client({
   partials: [Partials.Channel]
 });
 
-client.once(Events.ClientReady, async () => {
+client.once(Events.ClientReady, () => {
   console.log(`Bot je online jako ${client.user.tag}`);
+});
 
-  // Registrace slash příkazu při startu bota
+// Registrace slash příkazu - jednou po startu
+client.on(Events.ClientReady, async () => {
   const commands = [{
     name: 'vyjimka',
     description: 'Získat výjimku pro barevný nick'
@@ -32,73 +34,69 @@ client.once(Events.ClientReady, async () => {
     );
     console.log('Slash příkaz registrován.');
   } catch (error) {
-    console.error('Chyba při registraci slash příkazu:', error);
+    console.error(error);
   }
 });
 
-// Event na příkazy a modaly
 client.on(Events.InteractionCreate, async interaction => {
-  // Pokud není slash příkaz ani modal submit, ignoruj
-  if (!interaction.isChatInputCommand() && !interaction.isModalSubmit()) return;
+  try {
+    if (interaction.isChatInputCommand()) {
+      if (interaction.commandName === 'vyjimka') {
+        const modal = new ModalBuilder()
+          .setCustomId('vyjimka_modal')
+          .setTitle('Získání výjimky');
 
-  if (interaction.isChatInputCommand() && interaction.commandName === 'vyjimka') {
-    // Sestav modal
-    const modal = new ModalBuilder()
-      .setCustomId('vyjimka_modal')
-      .setTitle('Získání výjimky');
+        const nickInput = new TextInputBuilder()
+          .setCustomId('rust_nick')
+          .setLabel("Zadej svůj herní nick:")
+          .setStyle(TextInputStyle.Short)
+          .setRequired(true);
 
-    const nickInput = new TextInputBuilder()
-      .setCustomId('rust_nick')
-      .setLabel("Zadej svůj herní nick:")
-      .setStyle(TextInputStyle.Short)
-      .setRequired(true);
+        const row = new ActionRowBuilder().addComponents(nickInput);
+        modal.addComponents(row);
 
-    const row = new ActionRowBuilder().addComponents(nickInput);
-    modal.addComponents(row);
-
-    try {
-      // Modal zobraz rovnou, bez zbytečných awaitů předtím
-      await interaction.showModal(modal);
-    } catch (err) {
-      console.error("❌ Chyba při zobrazování modalu:", err);
-      // Pokud modal nelze zobrazit, odešli aspoň reply
-      if (!interaction.replied && !interaction.deferred) {
-        await interaction.reply({ content: 'Nepodařilo se zobrazit formulář. Zkus to prosím znovu.', ephemeral: true });
+        // showModal musí být zavoláno ihned, bez await před tím
+        await interaction.showModal(modal);
+        return;
       }
     }
-  }
 
-  if (interaction.isModalSubmit() && interaction.customId === 'vyjimka_modal') {
-    const nick = interaction.fields.getTextInputValue('rust_nick');
+    if (interaction.isModalSubmit()) {
+      if (interaction.customId === 'vyjimka_modal') {
+        const nick = interaction.fields.getTextInputValue('rust_nick');
 
-    try {
-      // Připoj se k RCON
-      const rcon = await Rcon.connect({
-        host: process.env.RCON_HOST,
-        port: parseInt(process.env.RCON_PORT),
-        password: process.env.RCON_PASSWORD
-      });
+        const rcon = await Rcon.connect({
+          host: process.env.RCON_HOST,
+          port: parseInt(process.env.RCON_PORT),
+          password: process.env.RCON_PASSWORD
+        });
 
-      console.log("✅ Připojeno k RCON");
+        console.log("✅ Připojeno k RCON");
 
-      const command = `oxide.usergroup add "${nick}" vyjimka`;
-      const response = await rcon.send(command);
+        const command = `oxide.usergroup add "${nick}" vyjimka`;
+        const response = await rcon.send(command);
 
-      console.log("📤 Odesláno:", command);
-      console.log("📥 Odpověď:", response);
+        console.log("📤 Odesláno:", command);
+        console.log("📥 Odpověď:", response);
 
-      await rcon.end();
+        await rcon.end();
 
-      // Přidej roli uživateli na Discordu
-      const member = await interaction.guild.members.fetch(interaction.user.id);
-      await member.roles.add(process.env.VYJIMKA_ROLE_ID);
+        // Přiřazení role na Discordu
+        const member = await interaction.guild.members.fetch(interaction.user.id);
+        await member.roles.add(process.env.VYJIMKA_ROLE_ID);
 
-      await interaction.reply({ content: `✅ Výjimka přidána hráči **${nick}**`, ephemeral: true });
-    } catch (err) {
-      console.error("❌ Chyba při RCON nebo přidání role:", err);
-      if (!interaction.replied && !interaction.deferred) {
-        await interaction.reply({ content: 'Nick nebyl nalezen nebo nastala chyba při přidávání výjimky. Zkontroluj správnost nicku a RCON připojení.', ephemeral: true });
+        // Reply jednou, pokud nebylo odpovězeno
+        if (!interaction.replied && !interaction.deferred) {
+          await interaction.reply({ content: `✅ Výjimka přidána hráči **${nick}**`, ephemeral: true });
+        }
       }
+    }
+  } catch (err) {
+    console.error("❌ Chyba v interakci:", err);
+
+    // Odpověz pouze, pokud ještě nebylo odpovězeno, ať nedojde k duplicitě
+    if (interaction && !interaction.replied && !interaction.deferred) {
+      await interaction.reply({ content: 'Nepodařilo se zobrazit formulář. Zkus to prosím znovu.', ephemeral: true });
     }
   }
 });
