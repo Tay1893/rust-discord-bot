@@ -8,6 +8,8 @@
   },
   "dependencies": {
     "discord.js": "^14.11.0",
-    "rcon-client": "^4.2.5"
+    "rcon-client": "^5.1.1",
+    "express": "^4.18.2"
   }
 }
+
