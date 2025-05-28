@@ -1,7 +1,7 @@
 const { Client, GatewayIntentBits, Partials, Events, REST, Routes } = require('discord.js');
 const { Rcon } = require('rcon-client');
 
-const token = 'MTM3NzI1ODAwMDA3MDIxMzY4Mg.GKk5Y5.l58uHGRoVGcIhtZTqKdHrNl4u_f2ngkvmavQec';
+const token = process.env.DISCORD_TOKEN;
 const guildId = '1241679045360484362';
 const roleId = '1377265027819765801';
 const rconHost = '185.180.2.124';
