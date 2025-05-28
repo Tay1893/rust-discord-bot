@@ -52,6 +52,8 @@ async function tryRconConnect(retries = 3) {
 }
 
 client.on(Events.InteractionCreate, async (interaction) => {
+  console.log(`Interaction received: type=${interaction.type}, id=${interaction.id}`);
+
   if (interaction.isChatInputCommand()) {
     if (interaction.commandName === 'vyjimka') {
       const modal = new ModalBuilder()
@@ -68,7 +70,11 @@ client.on(Events.InteractionCreate, async (interaction) => {
       const firstActionRow = new ActionRowBuilder().addComponents(nickInput);
       modal.addComponents(firstActionRow);
 
-      await interaction.showModal(modal);
+      try {
+        await interaction.showModal(modal);
+      } catch (err) {
+        console.error('Chyba při zobrazování modalu:', err);
+      }
     }
   } else if (interaction.isModalSubmit()) {
     if (interaction.customId === 'vyjimkaModal') {
@@ -98,6 +104,15 @@ client.on(Events.InteractionCreate, async (interaction) => {
       }
     }
   }
+});
+
+// Globální handlery chyb pro lepší diagnostiku
+client.on('error', error => {
+  console.error('Discord client error:', error);
+});
+
+process.on('unhandledRejection', error => {
+  console.error('Unhandled promise rejection:', error);
 });
 
 client.login(token).then(() => {
