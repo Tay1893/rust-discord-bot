@@ -32,6 +32,25 @@ async function registerCommands() {
   console.log('Slash příkaz registrován.');
 }
 
+// Funkce pro připojení k RCON s retry a timeout
+async function tryRconConnect(retries = 3) {
+  for (let i = 0; i < retries; i++) {
+    try {
+      const rcon = await Rcon.connect({
+        host: rconHost,
+        port: rconPort,
+        password: rconPassword,
+        timeout: 5000, // timeout 5 sekund
+      });
+      return rcon;
+    } catch (err) {
+      console.log(`RCON connect pokus ${i + 1} selhal, zkouším znovu...`);
+      await new Promise(res => setTimeout(res, 1000)); // čeká 1 sekundu před dalším pokusem
+    }
+  }
+  throw new Error('Nepodařilo se připojit k RCON po několika pokusech');
+}
+
 client.on(Events.InteractionCreate, async (interaction) => {
   if (interaction.isChatInputCommand()) {
     if (interaction.commandName === 'vyjimka') {
@@ -58,11 +77,7 @@ client.on(Events.InteractionCreate, async (interaction) => {
       const nick = interaction.fields.getTextInputValue('nickInput');
 
       try {
-        const rcon = await Rcon.connect({
-          host: rconHost,
-          port: rconPort,
-          password: rconPassword,
-        });
+        const rcon = await tryRconConnect();
 
         console.log(`Připojeno k RCON serveru na ${rconHost}:${rconPort}`);
 
