@@ -55,8 +55,8 @@ client.on(Events.InteractionCreate, async interaction => {
         const row = new ActionRowBuilder().addComponents(nickInput);
         modal.addComponents(row);
 
-        // showModal musí být zavoláno ihned, bez await před tím
-        await interaction.showModal(modal);
+        // Neawaituj showModal, hned returnni
+        interaction.showModal(modal);
         return;
       }
     }
@@ -85,7 +85,7 @@ client.on(Events.InteractionCreate, async interaction => {
         const member = await interaction.guild.members.fetch(interaction.user.id);
         await member.roles.add(process.env.VYJIMKA_ROLE_ID);
 
-        // Reply jednou, pokud nebylo odpovězeno
+        // Odpověz jednou, pokud nebylo ještě odpovězeno
         if (!interaction.replied && !interaction.deferred) {
           await interaction.reply({ content: `✅ Výjimka přidána hráči **${nick}**`, ephemeral: true });
         }
@@ -94,7 +94,7 @@ client.on(Events.InteractionCreate, async interaction => {
   } catch (err) {
     console.error("❌ Chyba v interakci:", err);
 
-    // Odpověz pouze, pokud ještě nebylo odpovězeno, ať nedojde k duplicitě
+    // Odpověz pouze, pokud ještě nebylo odpovězeno
     if (interaction && !interaction.replied && !interaction.deferred) {
       await interaction.reply({ content: 'Nepodařilo se zobrazit formulář. Zkus to prosím znovu.', ephemeral: true });
     }
