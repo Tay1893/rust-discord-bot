@@ -14,12 +14,10 @@ const client = new Client({
   partials: [Partials.Channel]
 });
 
-client.once(Events.ClientReady, () => {
+// Registrace slash příkazu a připravení bota
+client.once(Events.ClientReady, async () => {
   console.log(`Bot je online jako ${client.user.tag}`);
-});
 
-// Registrace slash příkazu - jednou po startu
-client.on(Events.ClientReady, async () => {
   const commands = [{
     name: 'vyjimka',
     description: 'Získat výjimku pro barevný nick'
@@ -34,12 +32,19 @@ client.on(Events.ClientReady, async () => {
     );
     console.log('Slash příkaz registrován.');
   } catch (error) {
-    console.error(error);
+    console.error('Chyba při registraci příkazu:', error);
   }
 });
 
+// Hlavní event handler pro interakce
 client.on(Events.InteractionCreate, async interaction => {
   try {
+    // Ochrana proti vícenásobnému zpracování téže interakce
+    if (interaction.acknowledged) {
+      console.log("Interakce už byla vyřízena, přeskočeno.");
+      return;
+    }
+
     if (interaction.isChatInputCommand()) {
       if (interaction.commandName === 'vyjimka') {
         const modal = new ModalBuilder()
@@ -55,7 +60,7 @@ client.on(Events.InteractionCreate, async interaction => {
         const row = new ActionRowBuilder().addComponents(nickInput);
         modal.addComponents(row);
 
-        // Neawaituj showModal, hned returnni
+        // await může způsobit race condition, necháme bez await a hned return
         interaction.showModal(modal);
         return;
       }
@@ -85,7 +90,7 @@ client.on(Events.InteractionCreate, async interaction => {
         const member = await interaction.guild.members.fetch(interaction.user.id);
         await member.roles.add(process.env.VYJIMKA_ROLE_ID);
 
-        // Odpověz jednou, pokud nebylo ještě odpovězeno
+        // Odpověz jednou, pokud ještě nebylo odpovězeno
         if (!interaction.replied && !interaction.deferred) {
           await interaction.reply({ content: `✅ Výjimka přidána hráči **${nick}**`, ephemeral: true });
         }
