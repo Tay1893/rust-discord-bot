@@ -1,143 +1,101 @@
+const { Client, GatewayIntentBits, Partials, Events, REST, Routes, ModalBuilder, TextInputBuilder, TextInputStyle, ActionRowBuilder } = require('discord.js');
+const { Rcon } = require('rcon-client');
+
 require('dotenv').config();
-const { 
-  Client, GatewayIntentBits, Partials, Routes, REST, ModalBuilder, 
-  TextInputBuilder, TextInputStyle, ActionRowBuilder, InteractionType 
-} = require('discord.js');
-const Rcon = require('rcon-srcds');
-
-const token = process.env.DISCORD_TOKEN;
-const clientId = process.env.CLIENT_ID;
-const guildId = process.env.GUILD_ID;
-
-const RCON_HOST = process.env.RCON_HOST;
-const RCON_PORT = parseInt(process.env.RCON_PORT);
-const RCON_PASSWORD = process.env.RCON_PASSWORD;
-const VYJIMKA_ROLE_ID = process.env.VYJIMKA_ROLE_ID;
 
 console.log("✅ ENV kontrola:");
-console.log("RCON_HOST:", RCON_HOST);
-console.log("RCON_PORT:", RCON_PORT);
-console.log("RCON_PASSWORD:", RCON_PASSWORD ? "(skryt)" : "❌ chybí");
-console.log("VYJIMKA_ROLE_ID:", VYJIMKA_ROLE_ID || "❌ chybí");
+console.log("RCON_HOST:", process.env.RCON_HOST);
+console.log("RCON_PORT:", process.env.RCON_PORT);
+console.log("RCON_PASSWORD:", "(skryt)");
+console.log("VYJIMKA_ROLE_ID:", process.env.VYJIMKA_ROLE_ID);
 
 const client = new Client({
   intents: [GatewayIntentBits.Guilds, GatewayIntentBits.GuildMembers],
   partials: [Partials.Channel]
 });
 
-const commands = [
-  {
-    name: 'vyjimka',
-    description: 'Získat výjimku pro barevný nick.'
-  }
-];
-
-const rest = new REST({ version: '10' }).setToken(token);
-
-client.once('ready', async () => {
+client.once(Events.ClientReady, () => {
   console.log(`Bot je online jako ${client.user.tag}`);
+});
+
+// Slash příkaz /vyjimka
+client.on(Events.ClientReady, async () => {
+  const commands = [{
+    name: 'vyjimka',
+    description: 'Získat výjimku pro barevný nick'
+  }];
+
+  const rest = new REST({ version: '10' }).setToken(process.env.DISCORD_TOKEN);
 
   try {
-    await rest.put(Routes.applicationGuildCommands(clientId, guildId), { body: commands });
+    await rest.put(
+      Routes.applicationGuildCommands(process.env.CLIENT_ID, process.env.GUILD_ID),
+      { body: commands }
+    );
     console.log('Slash příkaz registrován.');
   } catch (error) {
-    console.error('❌ Chyba při registraci příkazu:', error);
+    console.error(error);
   }
 });
 
-client.on('interactionCreate', async (interaction) => {
-  try {
-    // Slash příkaz
-    if (interaction.isChatInputCommand() && interaction.commandName === 'vyjimka') {
-      const modal = new ModalBuilder()
-        .setCustomId('vyjimkaModal')
-        .setTitle('Žádost o výjimku')
-        .addComponents(
-          new ActionRowBuilder().addComponents(
-            new TextInputBuilder()
-              .setCustomId('nick')
-              .setLabel('Zadej svůj herní nick')
-              .setStyle(TextInputStyle.Short)
-              .setRequired(true)
-          )
-        );
+// Interakce
+client.on(Events.InteractionCreate, async interaction => {
+  if (!interaction.isChatInputCommand() && !interaction.isModalSubmit()) return;
+
+  if (interaction.commandName === 'vyjimka') {
+    const modal = new ModalBuilder()
+      .setCustomId('vyjimka_modal')
+      .setTitle('Získání výjimky');
+
+    const nickInput = new TextInputBuilder()
+      .setCustomId('rust_nick')
+      .setLabel("Zadej svůj herní nick:")
+      .setStyle(TextInputStyle.Short)
+      .setRequired(true);
+
+    const row = new ActionRowBuilder().addComponents(nickInput);
+    modal.addComponents(row);
+
+    try {
       await interaction.showModal(modal);
-      return;
+    } catch (err) {
+      console.error("❌ Chyba při zobrazování modalu:", err);
     }
+  }
 
-    // Modal submit
-    if (interaction.type === InteractionType.ModalSubmit && interaction.customId === 'vyjimkaModal') {
-      const nick = interaction.fields.getTextInputValue('nick');
+  if (interaction.isModalSubmit() && interaction.customId === 'vyjimka_modal') {
+    const nick = interaction.fields.getTextInputValue('rust_nick');
 
-      await interaction.reply({ content: `⏳ Ověřuji nick: ${nick}`, ephemeral: true });
+    try {
+      const rcon = await Rcon.connect({
+        host: process.env.RCON_HOST,
+        port: parseInt(process.env.RCON_PORT),
+        password: process.env.RCON_PASSWORD
+      });
 
-      try {
-        await tryRconConnect(nick);
+      console.log("✅ Připojeno k RCON");
 
-        // Přidání role na Discordu
-        const member = await interaction.guild.members.fetch(interaction.user.id);
-        if (VYJIMKA_ROLE_ID) {
-          await member.roles.add(VYJIMKA_ROLE_ID);
-        }
+      const command = `oxide.usergroup add "${nick}" vyjimka`;
+      const response = await rcon.send(command);
 
-        await interaction.editReply({ content: `✅ Výjimka udělena hráči \`${nick}\`.` });
-      } catch (error) {
-        console.error('❌ Chyba při RCON nebo přidání role:', error);
-        try {
-          await interaction.editReply({ content: `❌ Nick nebyl nalezen nebo nastala chyba při přidávání výjimky. Zkontroluj správnost nicku a RCON připojení.` });
-        } catch {
-          if (!interaction.replied) {
-            await interaction.reply({ content: 'Nepodařilo se přidat výjimku, zkuste to znovu.', ephemeral: true });
-          }
-        }
+      console.log("📤 Odesláno:", command);
+      console.log("📥 Odpověď:", response);
+
+      await rcon.end();
+
+      // Přiřazení role
+      const member = await interaction.guild.members.fetch(interaction.user.id);
+      await member.roles.add(process.env.VYJIMKA_ROLE_ID);
+
+      await interaction.reply({ content: `✅ Výjimka přidána hráči **${nick}**`, ephemeral: true });
+    } catch (err) {
+      console.error("❌ Chyba při RCON nebo přidání role:", err);
+      if (!interaction.replied) {
+        await interaction.reply({ content: 'Nick nebyl nalezen nebo nastala chyba při přidávání výjimky. Zkontroluj správnost nicku a RCON připojení.', ephemeral: true });
       }
-      return;
-    }
-  } catch (error) {
-    console.error('❌ Chyba v interactionCreate:', error);
-
-    if (!interaction.replied && !interaction.deferred) {
-      await interaction.reply({ content: 'Nastala chyba při zpracování interakce.', ephemeral: true });
     }
   }
 });
 
+client.login(process.env.DISCORD_TOKEN);
 
-async function tryRconConnect(nick) {
-  return new Promise((resolve, reject) => {
-    let attempts = 0;
-    const maxAttempts = 3;
-
-    function attempt() {
-      attempts++;
-      console.log(`🔌 RCON pokus ${attempts}...`);
-      const conn = new Rcon(RCON_HOST, RCON_PORT, RCON_PASSWORD);
-
-      conn.on('auth', () => {
-        console.log('✅ RCON přihlášení úspěšné.');
-        conn.send(`oxide.usergroup add "${nick}" vyjimka`);
-        conn.disconnect();
-        resolve();
-      });
-
-      conn.on('error', (err) => {
-        console.error(`❌ RCON chyba:`, err);
-        if (attempts < maxAttempts) {
-          setTimeout(attempt, 1000);
-        } else {
-          reject(new Error('Nepodařilo se připojit k RCON po několika pokusech'));
-        }
-      });
-
-      conn.on('end', () => {
-        console.log('🔌 RCON odpojeno.');
-      });
-
-      conn.connect();
-    }
-
-    attempt();
-  });
-}
-
-client.login(token);
