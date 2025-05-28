@@ -5,11 +5,11 @@ const {
 const { Rcon } = require('rcon-client');
 
 const token = process.env.DISCORD_TOKEN;
-const guildId = '1241679045360484362';
-const roleId = '1377265027819765801';
-const rconHost = '185.180.2.124';
-const rconPort = 28395;
-const rconPassword = '786i0knd';
+const guildId = process.env.GUILD_ID;
+const roleId = process.env.ROLE_ID;
+const rconHost = process.env.RCON_HOST;
+const rconPort = parseInt(process.env.RCON_PORT, 10);
+const rconPassword = process.env.RCON_PASSWORD;
 
 const client = new Client({
   intents: [GatewayIntentBits.Guilds, GatewayIntentBits.GuildMembers],
