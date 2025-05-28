@@ -12,12 +12,14 @@ const guildId = process.env.GUILD_ID;
 const RCON_HOST = process.env.RCON_HOST;
 const RCON_PORT = parseInt(process.env.RCON_PORT);
 const RCON_PASSWORD = process.env.RCON_PASSWORD;
+const VYJIMKA_ROLE_ID = process.env.VYJIMKA_ROLE_ID;
 
 // 🧪 Výpis proměnných prostředí
 console.log("✅ ENV kontrola:");
 console.log("RCON_HOST:", RCON_HOST);
 console.log("RCON_PORT:", RCON_PORT);
 console.log("RCON_PASSWORD:", RCON_PASSWORD ? "(skryt)" : "❌ chybí");
+console.log("VYJIMKA_ROLE_ID:", VYJIMKA_ROLE_ID);
 
 const client = new Client({
   intents: [GatewayIntentBits.Guilds],
@@ -47,7 +49,6 @@ client.once('ready', async () => {
 client.on('interactionCreate', async (interaction) => {
   try {
     if (interaction.isChatInputCommand() && interaction.commandName === 'vyjimka') {
-      // PŘÍMO ukážeme modal, žádný defer nebo reply před tím
       const modal = new ModalBuilder()
         .setCustomId('vyjimkaModal')
         .setTitle('Žádost o výjimku')
@@ -62,19 +63,18 @@ client.on('interactionCreate', async (interaction) => {
         );
 
       await interaction.showModal(modal);
-    } 
-    else if (interaction.type === InteractionType.ModalSubmit && interaction.customId === 'vyjimkaModal') {
+
+    } else if (interaction.type === InteractionType.ModalSubmit && interaction.customId === 'vyjimkaModal') {
       const nick = interaction.fields.getTextInputValue('nick');
 
-      // Modal musí být ACK hned reply
       await interaction.reply({ content: `⏳ Ověřuji nick: ${nick}`, ephemeral: true });
 
       try {
-        await tryRconConnect(nick);
-        await interaction.editReply({ content: `✅ Výjimka udělena hráči \`${nick}\`.` });
+        await tryRconConnect(nick, interaction);
+        await interaction.editReply({ content: `✅ Výjimka udělena hráči \`${nick}\` a role přidána.` });
       } catch (error) {
-        console.error('❌ Chyba při RCON příkazu:', error);
-        await interaction.editReply({ content: `❌ Nepodařilo se připojit k RCON: ${error.message}` });
+        console.error('❌ Chyba při RCON nebo přidání role:', error);
+        await interaction.editReply({ content: `❌ Chyba: ${error.message}` });
       }
     }
   } catch (error) {
@@ -82,13 +82,11 @@ client.on('interactionCreate', async (interaction) => {
 
     if (!interaction.replied && !interaction.deferred) {
       await interaction.reply({ content: 'Nastala chyba při zpracování interakce.', ephemeral: true });
-    } else {
-      console.error('Interakce již byla odpovězena, nelze znovu reagovat.');
     }
   }
 });
 
-async function tryRconConnect(nick) {
+async function tryRconConnect(nick, interaction) {
   return new Promise((resolve, reject) => {
     let attempts = 0;
     const maxAttempts = 3;
@@ -100,9 +98,29 @@ async function tryRconConnect(nick) {
 
       conn.on('auth', () => {
         console.log('✅ RCON přihlášení úspěšné.');
-        conn.send(`oxide.usergroup add "${nick}" vyjimka`);
+        conn.send(`oxide.usergroup add ${nick} vyjimka`);
+      });
+
+      conn.on('response', async (str) => {
+        console.log('RCON response:', str);
         conn.disconnect();
-        resolve();
+
+        try {
+          const member = interaction.guild.members.cache.get(interaction.user.id);
+          if (!member) {
+            reject(new Error('Uživatel nenalezen v guildě.'));
+            return;
+          }
+          const role = interaction.guild.roles.cache.get(VYJIMKA_ROLE_ID);
+          if (!role) {
+            reject(new Error('Role nenalezena na serveru.'));
+            return;
+          }
+          await member.roles.add(role);
+          resolve();
+        } catch (err) {
+          reject(err);
+        }
       });
 
       conn.on('error', (err) => {
