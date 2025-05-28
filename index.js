@@ -14,12 +14,10 @@ const client = new Client({
   partials: [Partials.Channel]
 });
 
-client.once(Events.ClientReady, () => {
+client.once(Events.ClientReady, async () => {
   console.log(`Bot je online jako ${client.user.tag}`);
-});
 
-// Slash příkaz /vyjimka
-client.on(Events.ClientReady, async () => {
+  // Registrace slash příkazu při startu bota
   const commands = [{
     name: 'vyjimka',
     description: 'Získat výjimku pro barevný nick'
@@ -34,15 +32,17 @@ client.on(Events.ClientReady, async () => {
     );
     console.log('Slash příkaz registrován.');
   } catch (error) {
-    console.error(error);
+    console.error('Chyba při registraci slash příkazu:', error);
   }
 });
 
-// Interakce
+// Event na příkazy a modaly
 client.on(Events.InteractionCreate, async interaction => {
+  // Pokud není slash příkaz ani modal submit, ignoruj
   if (!interaction.isChatInputCommand() && !interaction.isModalSubmit()) return;
 
-  if (interaction.commandName === 'vyjimka') {
+  if (interaction.isChatInputCommand() && interaction.commandName === 'vyjimka') {
+    // Sestav modal
     const modal = new ModalBuilder()
       .setCustomId('vyjimka_modal')
       .setTitle('Získání výjimky');
@@ -57,9 +57,14 @@ client.on(Events.InteractionCreate, async interaction => {
     modal.addComponents(row);
 
     try {
+      // Modal zobraz rovnou, bez zbytečných awaitů předtím
       await interaction.showModal(modal);
     } catch (err) {
       console.error("❌ Chyba při zobrazování modalu:", err);
+      // Pokud modal nelze zobrazit, odešli aspoň reply
+      if (!interaction.replied && !interaction.deferred) {
+        await interaction.reply({ content: 'Nepodařilo se zobrazit formulář. Zkus to prosím znovu.', ephemeral: true });
+      }
     }
   }
 
@@ -67,6 +72,7 @@ client.on(Events.InteractionCreate, async interaction => {
     const nick = interaction.fields.getTextInputValue('rust_nick');
 
     try {
+      // Připoj se k RCON
       const rcon = await Rcon.connect({
         host: process.env.RCON_HOST,
         port: parseInt(process.env.RCON_PORT),
@@ -83,14 +89,14 @@ client.on(Events.InteractionCreate, async interaction => {
 
       await rcon.end();
 
-      // Přiřazení role
+      // Přidej roli uživateli na Discordu
       const member = await interaction.guild.members.fetch(interaction.user.id);
       await member.roles.add(process.env.VYJIMKA_ROLE_ID);
 
       await interaction.reply({ content: `✅ Výjimka přidána hráči **${nick}**`, ephemeral: true });
     } catch (err) {
       console.error("❌ Chyba při RCON nebo přidání role:", err);
-      if (!interaction.replied) {
+      if (!interaction.replied && !interaction.deferred) {
         await interaction.reply({ content: 'Nick nebyl nalezen nebo nastala chyba při přidávání výjimky. Zkontroluj správnost nicku a RCON připojení.', ephemeral: true });
       }
     }
@@ -98,4 +104,3 @@ client.on(Events.InteractionCreate, async interaction => {
 });
 
 client.login(process.env.DISCORD_TOKEN);
-
