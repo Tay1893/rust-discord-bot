@@ -1,3 +1,4 @@
+const express = require('express');
 const { 
   Client, GatewayIntentBits, Partials, Events, REST, Routes, 
   ModalBuilder, TextInputBuilder, TextInputStyle, ActionRowBuilder 
@@ -10,6 +11,19 @@ const roleId = '1377265027819765801';
 const rconHost = '185.180.2.124';
 const rconPort = 28395;
 const rconPassword = '786i0knd';
+
+// --- EXPRESS SERVER PRO RENDER ---
+const app = express();
+const PORT = process.env.PORT || 3000;
+
+app.get('/', (req, res) => {
+  res.send('Bot je online');
+});
+
+app.listen(PORT, () => {
+  console.log(`HTTP server běží na portu ${PORT}`);
+});
+// --- KONEC EXPRESS SERVERU ---
 
 const client = new Client({
   intents: [GatewayIntentBits.Guilds, GatewayIntentBits.GuildMembers],
@@ -25,7 +39,6 @@ async function registerCommands() {
     {
       name: 'vyjimka',
       description: 'Přidá hráči výjimku',
-      // žádné argumenty
     },
   ];
   const rest = new REST({ version: '10' }).setToken(token);
@@ -36,7 +49,6 @@ async function registerCommands() {
 client.on(Events.InteractionCreate, async (interaction) => {
   if (interaction.isChatInputCommand()) {
     if (interaction.commandName === 'vyjimka') {
-      // vytvoříme modal na vyplnění nicku
       const modal = new ModalBuilder()
         .setCustomId('vyjimkaModal')
         .setTitle('Přidání výjimky');
@@ -66,11 +78,9 @@ client.on(Events.InteractionCreate, async (interaction) => {
           password: rconPassword,
         });
 
-        // Pokus o přidání výjimky přes RCON
         const response = await rcon.send(`oxide.usergroup add ${nick} vyjimka`);
         rcon.end();
 
-        // Přidání role na Discordu
         const member = await interaction.guild.members.fetch(interaction.user.id);
         await member.roles.add(roleId);
 
